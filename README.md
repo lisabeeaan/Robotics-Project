@@ -23,17 +23,6 @@ source /opt/ros/kinetic/setup.bash
 source ~/yumi_ws/devel/setup.bash
 ```
 Alternatively add these to your `.bashrc` file 
-
--------------------
-### Preparing the gmapping file
-1. 
-```bash
-
-```
-2. 
-```bash
-
-```
 --------------------
 ### Unpacking, Preparing and Compiling
 1. Unpack 

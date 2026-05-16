@@ -61,6 +61,8 @@ clear
 # environment variables should be automatically loaded
 roslaunch surveillance_bot gmapping.launch
 ```
+<img width="1436" height="1084" alt="image" src="https://github.com/user-attachments/assets/893f6276-2de8-48d8-9805-fe5c52d31fbc" />
+
 4. Terminal 3
 ```bash
 rosrun teleop_twist_keyboard teleop_twist_keyboard.py /cmd_vel:=/cmd_vel_mux/input/teleop

@@ -1,54 +1,22 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[33]:
+!/usr/bin/env python
 
 
 import random
 import heapq
+from PIL import Image
+import numpy as np
+import copy
+import cv2
+import numpy as np
+import rospy
 
-def prm_plan(map_yaml_path, start_str, goal_str):
-    # Load YAML to get PGM filename
-    import yaml
-    with open(map_yaml_path, 'r') as f:
-        map_data = yaml.safe_load(f)
-    import os
-
-    # YAML gives a relative path like "my_map.pgm"
-    pgm_relative = map_data["image"]
-
-    # Build absolute path based on the YAML file location
-    yaml_dir = os.path.dirname(map_yaml_path)
-    pgm_file = os.path.join(yaml_dir, pgm_relative)
-
-    # Load the PGM map
-    gridmap = loadpgm(pgm_file)
-    gridmap = [row for row in gridmap if len(row) > 0]
-
-    # Convert grid to nodes + obstacles
-    mapnodes, obstacles = converttonodes(gridmap)
-
-    # Convert start/goal strings to Node objects
-    goal, start = goalstartinit(start_str, goal_str)
-
-    # PRM sampling
-    samples = PRMphase1(goal, start, obstacles, gridmap)
-
-    # PRM query
-    path_nodes = PRMphase2(gridmap, obstacles, samples, goal, start)
-
-    # Convert Node objects to (x, y) waypoints
-    waypoints = [(p.x, p.y) for p in path_nodes]
-
-    return waypoints
-            
 #object to hold the data for one point or area in the occupancy map
 class Node:
     def __init__(self,point,neighbours):
         arr=point.split(",")
         self.x=int(arr[0])
         self.y=int(arr[1])
-        self.val=255
+        self.val=254
         self.neighbours=neighbours
         self.h=0
         self.g=0
@@ -63,44 +31,31 @@ class Node:
     def __lt__(self, other):
         return (self.x, self.y) < (other.x, other.y)
 
-def goalstartinit(startstrlocation,goalstrlocation):
-    
+def goalstartinit(point,point2):
+    #convert start to grid coordinates
+
+    #convert the start coords from world to grid coordinates
+    arr=point.split(",")
+    arr2=point2.split(",")
+    x,y=converttogrid(float(arr[0]),float(arr[1]))
+    x1,y1=converttogrid(float(arr2[0]),float(arr2[1]))
+    startstrlocation=str(int(x))+","+str(int(y))
+    goalstrlocation=str(int(x1))+","+str(int(y1))
     goal=Node(goalstrlocation,[])
-    start=Node(startstrlocation,[]) #going to be the robots current position 
+    start=Node(startstrlocation,[]) #going to be the robots current position            
     #the distances for both for astar 
-    goal.h=(((goal.x-goal.x)**2 +(goal.y-goal.y)**2))**0.5;
-    goal.g=(((start.x-goal.x)**2 +(goal.y-start.y)**2))**0.5;
+    goal.h=((start.x - goal.x)**2 + (start.y - goal.y)**2) ** 0.5
+    goal.g=0
     start.h=goal.g
     start.g=goal.h
-    return goal,start
+    return start,goal
     
 #function to load the pgm file of the map and puts it in a 2d grid  
 def loadpgm(filename):
-    with open(filename, 'r') as f:
-        # Strip whitespace
-        lines = [l.strip() for l in f.readlines()]
-
-    # Remove blank lines
-    lines = [l for l in lines if l != ""]
-
-    # Remove comment lines
-    lines = [l for l in lines if not l.startswith("#")]
-
-    assert lines[0] == "P2"
-
-    width, height = map(int, lines[1].split())
-    max_val = int(lines[2])
-
-    data = []
-    for line in lines[3:]:
-        data.extend([int(x) for x in line.split()])
-
-    grid = []
-    for i in range(height):
-        row = data[i * width:(i + 1) * width]
-        grid.append(row)
-
-    return grid
+    img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise ValueError("Failed to load map: " + filename)
+    return np.array(img)
 
 #converts all the points in the grid to nodes to make it easier to use
 def converttonodes(gridmap):
@@ -108,24 +63,19 @@ def converttonodes(gridmap):
     rows=len(gridmap)
     obstacles=[]
     mapnodes=[]
-    for i in range(rows):
-        for j in range(cols):
-            stri=str(j)+","+str(i)
+    for y in range(rows):
+        for x in range(cols):
+            stri=str(x)+","+str(y)
             currnode=Node(stri,[])
-            if(gridmap[i][j]!=255):
+            if(gridmap[y][x]!=254):
                 obstacles.append(currnode)
+            #else:
+               # print(currnode.x,",",currnode.y)
             mapnodes.append(currnode)
-            currnode.val=gridmap[i][j]
-            currnode.x=i
-            currnode.y=j
+            currnode.val=gridmap[y][x]
+            currnode.x=x
+            currnode.y=y
     return mapnodes,obstacles
-
-#mini function to check if a point is a obstacle
-def isobstacle(point,obs):
-    if(point in obs):
-        return True
-    else:
-        return False
 
 #checks if we can draw a clear line from node to node without hitting an obstacle            
 def isline(gridmap,point1,point2,obs):
@@ -140,23 +90,26 @@ def isline(gridmap,point1,point2,obs):
     while(t<=1):
         x = point1.x+t*lenx
         y = point1.y+t*leny
-        if (x<rows and x>0 and y>0 and y<cols):
-            xy= str(int(x))+","+str(int(y))
-            xynode=Node(xy,[])
-            if(isobstacle(xynode,obs)):
+        if (x<cols and x>-1 and y>-1 and y<rows):
+            if(gridmap[int(y)][int(x)]==0):
                 return False
-        t+=0.05
+        t+=0.01
     return True
 
 #conects the nodes in the graph that are close to each other with no obstacles in between them to build the graph 
 def findneighbours(gridmap,sample,samples,rad,obs):
+    times=0
     for sam in samples:
         dist=((sample.x-sam.x)**2+(sample.y-sam.y)**2)**0.5
         if dist==rad or dist<rad:
-            if sam not in sample.neighbours:
+            if sam not in sample.neighbours or sample not in sam.neighbours:
                 if (isline(gridmap,sample,sam,obs) and sample!=sam):
+                    #if times==0:
+                        #print("we are finding neighbour for ",sample.x,",",sample.y)
+                        #times+=1
                     sample.neighbours.append(sam)
                     sam.neighbours.append(sample)
+                
                     
                     
 #astart to find the shortest path from start to goal 
@@ -168,62 +121,85 @@ def Astar(startnode, goalnode):
     heapq.heappush(queue, ((startnode.h+startnode.g),startnode.h,startnode.g,startnode))
     while queue:
         cost,h,g,node= heapq.heappop(queue)
+        
         if node in visited:
             continue
         visited.add(node)
-        
         if(node.x==goalnode.x and node.y==goalnode.y):
             #print("THIS IS THE GOAL STATE" ,node.x,node.y)
             current = node
             while current is not None:
                 path.append(current)
+                #print(current.x,",",current.y)
                 current = current.parent
             path.reverse()
             break
         else:
             
             for neigh in node.neighbours:
-                if (neigh not in visited):
-                    neigh.g = node.g + 1
+                newg = node.g + 1
+                if (neigh not in visited or newg < neigh.g):
+                    neigh.g = newg
+                    neigh.h = ((neigh.x - goalnode.x)**2 + (neigh.y - goalnode.y)**2) ** 0.5
                     neigh.parent = node
                     heapq.heappush(queue, (neigh.g + neigh.h, neigh.h, neigh.g, neigh))
     #print("WE ARE FINISHED IN ASTAR")
     return path
-    
 
 
 #learning phase which finds samples , saves the sample graph and then is ready for reuse to avoid multiple sampling 
-def PRMphase1(goal,start,obs,gridmap):
+def PRMphase1(obs,gridmap):
     samples=[]
-    #print("we are in prm")
+    #print("we are in prm phase1")
     maxx=len(gridmap[0])
     maxy=len(gridmap)
-    while (len(samples)<200):
-        xval=random.randint(0,maxx)
-        yval=random.randint(0,maxy)
+    while (len(samples)<1000):
+        xval=random.randint(0,maxx-1)
+        yval=random.randint(0,maxy-1)
         string=str(int(xval))+","+str(int(yval))
         node=Node(string,[])
-        if(isobstacle(node,obs)==False):
+        node.val=gridmap[yval][xval]
+        if(node.val==254 or node.val==205):
             samples.append(node)
+    #print("len of samples:",len(samples))
+    rospy.loginfo("PRM samples generated: {}".format(len(samples)))
     for sample in samples:
-        findneighbours(gridmap,sample,samples,maxx/2,obs)
+        findneighbours(gridmap,sample,samples,maxx/3,obs)
+    total_edges = sum(len(s.neighbours) for s in samples)
+    rospy.loginfo("PRM total edges created: {}".format(total_edges))
     #print("WE ARE FINISHED IN PRM SAMPLING")
     return samples
     
 #the query phase where the path from start to goal is found 
 def PRMphase2(gridmap,obs,samples, goal,start):
+    #print("we are phase 2")
     maxx=len(gridmap[0])
-    tempsamples = list(samples)
-    tempsamples.append(goal)
-    tempsamples.append(start)
-    findneighbours(gridmap,goal,tempsamples,maxx/2,obs)
-    findneighbours(gridmap,start,tempsamples,maxx/2,obs)
-    for node in tempsamples:
-        node.h=(((node.x-goal.x)**2 +(node.y-goal.y)**2))**0.5;
-        node.g=(((node.x-start.x)**2 +(node.y-start.y)**2))**0.5;
+    tempsamples = samples
+    findneighbours(gridmap,goal,tempsamples,maxx/3,obs)
+    findneighbours(gridmap,start,tempsamples,maxx/3,obs)
     path=Astar(start, goal)
+    rospy.loginfo("A* path length (nodes): {}".format(len(path)))
     return path 
-
+    
+def reset_nodes(samples):
+    for n in samples:
+        n.g = 0
+        n.h = 0
+        n.parent = None
+        
+def converttoworld(path):
+    newpath = []
+    for i in path:
+        x = i.x * 0.1 + (-10)
+        y = i.y * 0.1 + (-10)
+        newpath.append((x, y))
+    return newpath
+    
+def converttogrid(nodex,nodey):
+    x = int((nodex - (-10)) / 0.1)
+    y = int((nodey - (-10)) / 0.1) 
+    return x,y
+    
 if __name__ == "__main__":
     str2 = input("ENTER START")
     str1 = input("ENTER GOAL")
@@ -240,21 +216,3 @@ if __name__ == "__main__":
     for p in path:
         outp = str(p.x) + "," + str(p.y)
         print(outp)
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-

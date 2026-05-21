@@ -91,7 +91,7 @@ def isline(gridmap,point1,point2,obs):
         x = point1.x+t*lenx
         y = point1.y+t*leny
         if (x<cols and x>-1 and y>-1 and y<rows):
-            if(gridmap[int(y)][int(x)]==0):
+            if(gridmap[int(y)][int(x)]!=254):
                 return False
         t+=0.01
     return True
@@ -159,7 +159,7 @@ def PRMphase1(obs,gridmap):
         string=str(int(xval))+","+str(int(yval))
         node=Node(string,[])
         node.val=gridmap[yval][xval]
-        if(node.val==254 or node.val==205):
+        if(node.val==254):
             samples.append(node)
     #print("len of samples:",len(samples))
     rospy.loginfo("PRM samples generated: {}".format(len(samples)))

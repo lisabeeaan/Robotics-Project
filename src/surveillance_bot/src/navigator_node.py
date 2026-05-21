@@ -35,7 +35,7 @@ def navigate_to_waypoint(pub, wx, wy):
         dy = wy - ry
         dist = math.sqrt(dx*dx + dy*dy)
 
-        if dist < 0.3:
+        if dist < 0.1:
            break
 
         angle_to_goal = math.atan2(dy, dx)
@@ -45,10 +45,15 @@ def navigate_to_waypoint(pub, wx, wy):
         cmd = Twist()
 
         if abs(angle_error) > 0.2:
-            cmd.angular.z = 1.0 * angle_error
+            cmd.angular.z = 2.0 * angle_error
         else:
-            cmd.linear.x = 0.25
-
+            cmd.linear.x =min(0.25,0.5*dist)
+	if abs(angle_error) > 0.3:
+            cmd.linear.x = 0
+    	    cmd.angular.z = 1.5 * angle_error
+	else:
+    	    cmd.linear.x = min(0.25, 0.5 * dist)
+    	    cmd.angular.z = 0
         pub.publish(cmd)
         rate.sleep()
 
@@ -81,9 +86,9 @@ def main():
     rospy.loginfo("Map shape: {} x {}".format(gridmap.shape[0], gridmap.shape[1]))
     rospy.loginfo("Map min value: {}, max value: {}".format(np.min(gridmap),np.max(gridmap)))
     rospy.loginfo("Unique map values: {}".format(np.unique(gridmap)))
-    rospy.loginfo("Free (0): {}".format(np.sum(gridmap == 0)))
+    rospy.loginfo("Free (254): {}".format(np.sum(gridmap == 254)))
     rospy.loginfo("Unknown (205): {}".format(np.sum(gridmap == 205)))
-    rospy.loginfo("Obstacle (254): {}".format(np.sum(gridmap == 254)))
+    rospy.loginfo("Obstacle (0): {}".format(np.sum(gridmap == 0)))
     start=None
     goal=None
     while not rospy.is_shutdown():
@@ -98,7 +103,7 @@ def main():
         
         start_str = "{},{}".format(float(start[0]), float(start[1]))
         goal_str = "{},{}".format(float(goal[0]), float(goal[1]))
-        start,goal= goalstartinit(start_str, goal_str)
+        start,goal= goalstartinit(start_str, goal_str)import os
         rospy.loginfo("Start node: ({}, {})".format(start.x, start.y))
         rospy.loginfo("Goal node: ({}, {})".format(goal.x, goal.y))
         reset_nodes(samples)
@@ -109,10 +114,11 @@ def main():
         rospy.loginfo("Converted path to {} waypoints".format(len(path_nodes)))
         waypoints = path_nodes
         rospy.loginfo("Got {} waypoints".format(len(waypoints)))
-
+	
         for wx, wy in waypoints:
+	    rospy.loginfo("Going {},{} waypoint".format(wx,wy))
             navigate_to_waypoint(pub, wx, wy)
-
+		
     rospy.loginfo("Navigation complete.")
 
 if __name__ == "__main__":

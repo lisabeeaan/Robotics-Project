@@ -1,4 +1,4 @@
-!/usr/bin/env python
+#!/usr/bin/env python
 
 
 import random
@@ -93,7 +93,7 @@ def isline(gridmap,point1,point2,obs):
         if (x<cols and x>-1 and y>-1 and y<rows):
             if(gridmap[int(y)][int(x)]!=254):
                 return False
-        t+=0.01
+        t+=0.05
     return True
 
 #conects the nodes in the graph that are close to each other with no obstacles in between them to build the graph 
@@ -191,13 +191,13 @@ def converttoworld(path):
     newpath = []
     for i in path:
         x = i.x * 0.1 + (-10)
-        y = i.y * 0.1 + (-10)
+        y = 10 - (i.y * 0.1)
         newpath.append((x, y))
     return newpath
     
 def converttogrid(nodex,nodey):
     x = int((nodex - (-10)) / 0.1)
-    y = int((nodey - (-10)) / 0.1) 
+    y = int(((10)-nodey) / 0.1) 
     return x,y
     
 if __name__ == "__main__":

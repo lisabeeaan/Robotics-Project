@@ -103,7 +103,7 @@ def main():
         
         start_str = "{},{}".format(float(start[0]), float(start[1]))
         goal_str = "{},{}".format(float(goal[0]), float(goal[1]))
-        start,goal= goalstartinit(start_str, goal_str)import os
+        start,goal= goalstartinit(start_str, goal_str)
         rospy.loginfo("Start node: ({}, {})".format(start.x, start.y))
         rospy.loginfo("Goal node: ({}, {})".format(goal.x, goal.y))
         reset_nodes(samples)
